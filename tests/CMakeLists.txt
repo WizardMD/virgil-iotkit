@@ -123,3 +123,5 @@ target_include_directories(virgil-iot-sdk-tests
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>"
         "$<INSTALL_INTERFACE:include>"
         )
+
+add_subdirectory(fuzzytesting)
