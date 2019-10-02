@@ -48,7 +48,7 @@ vs_cloud_is_new_tl_version_available(vs_tl_info_t *tl_info) {
         return VS_CLOUD_ERR_INVAL;
     }
 
-    if (VS_TL_OK != vs_tl_load_part(&info, (uint8_t *)&tl_header, sizeof(vs_tl_header_t), &res_sz)) {
+    if (VS_STORAGE_OK != vs_tl_load_part(&info, (uint8_t *)&tl_header, sizeof(vs_tl_header_t), &res_sz)) {
         return VS_CLOUD_ERR_FAIL;
     }
 
@@ -56,7 +56,7 @@ vs_cloud_is_new_tl_version_available(vs_tl_info_t *tl_info) {
     vs_tl_header_to_host(&tl_header, &tl_header);
 
     info.id = VS_TL_ELEMENT_TLF;
-    if (VS_TL_OK != vs_tl_load_part(&info, tl_footer, sizeof(tl_footer), &res_sz)) {
+    if (VS_STORAGE_OK != vs_tl_load_part(&info, tl_footer, sizeof(tl_footer), &res_sz)) {
         return VS_CLOUD_ERR_FAIL;
     }
 
@@ -209,23 +209,24 @@ _get_firmware_version_from_manifest(vs_firmware_manifest_entry_t *fm_entry, vs_f
         return VS_CLOUD_ERR_FAIL;
     }
 
-    fw_version->timestamp = VS_IOT_NTOHL(*(uint32_t *)timestamp);
+    fw_version->timestamp = VS_IOT_NTOHL(*(uint32_t *)timestamp); //-V1032 (PVS_IGNORE)
 
     return VS_CLOUD_ERR_OK;
 }
 
 /*************************************************************************/
 static bool
-_is_member_for_vendor_and_model_present(uint8_t manufacture_id[MANUFACTURE_ID_SIZE],
+_is_member_for_vendor_and_model_present(const vs_storage_op_ctx_t *fw_storage,
+                                        uint8_t manufacture_id[MANUFACTURE_ID_SIZE],
                                         uint8_t device_type[DEVICE_TYPE_SIZE],
                                         vs_firmware_version_t *cur_version) {
     // TODO: Need to arrange models table with current version of devices
     vs_firmware_descriptor_t desc;
-    int res = vs_update_load_firmware_descriptor(manufacture_id, device_type, &desc);
+    int res = vs_firmware_load_firmware_descriptor(fw_storage, manufacture_id, device_type, &desc);
 
-    if (VS_UPDATE_ERR_NOT_FOUND == res) {
+    if (VS_STORAGE_ERROR_NOT_FOUND == res) {
         VS_IOT_MEMSET(cur_version, 0, sizeof(vs_firmware_version_t));
-    } else if (VS_UPDATE_ERR_OK == res) {
+    } else if (VS_STORAGE_OK == res) {
         VS_IOT_MEMCPY(cur_version, &desc.info.version, sizeof(vs_firmware_version_t));
     } else {
         return false;
@@ -236,25 +237,24 @@ _is_member_for_vendor_and_model_present(uint8_t manufacture_id[MANUFACTURE_ID_SI
 
 /*************************************************************************/
 int
-vs_cloud_is_new_firmware_version_available(uint8_t manufacture_id[MANUFACTURE_ID_SIZE],
+vs_cloud_is_new_firmware_version_available(const vs_storage_op_ctx_t *fw_storage,
+                                           uint8_t manufacture_id[MANUFACTURE_ID_SIZE],
                                            uint8_t device_type[DEVICE_TYPE_SIZE],
                                            vs_firmware_version_t *new_ver) {
     vs_firmware_version_t current_ver;
 
-    if (!_is_member_for_vendor_and_model_present(manufacture_id, device_type, &current_ver) ||
-        0 <= VS_IOT_MEMCMP(&current_ver.major,
-                           &new_ver->major,
-                           sizeof(vs_firmware_version_t) - sizeof(current_ver.app_type))) {
+    if (!_is_member_for_vendor_and_model_present(fw_storage, manufacture_id, device_type, &current_ver) ||
+        0 <= VS_IOT_MEMCMP(&(current_ver.major),&(new_ver->major),    //-V512 (PVS_IGNORE)
+                                            sizeof(vs_firmware_version_t) - sizeof(current_ver.app_type))) {
         return VS_CLOUD_ERR_NOT_FOUND;
     }
-
     return VS_CLOUD_ERR_OK;
 }
 
 /*************************************************************************/
 static int
-_is_new_fw_version_available_in_manifest(vs_firmware_manifest_entry_t *fm_entry) {
-    vs_firmware_version_t current_ver;
+_is_new_fw_version_available_in_manifest(const vs_storage_op_ctx_t *fw_storage,
+                                         vs_firmware_manifest_entry_t *fm_entry) {
     vs_firmware_version_t new_ver;
     uint8_t manufacture_id[MANUFACTURE_ID_SIZE];
 
@@ -263,17 +263,20 @@ _is_new_fw_version_available_in_manifest(vs_firmware_manifest_entry_t *fm_entry)
         return VS_CLOUD_ERR_FAIL;
     }
 
-    return vs_cloud_is_new_firmware_version_available(manufacture_id, fm_entry->device_type.id, &new_ver);
+    return vs_cloud_is_new_firmware_version_available(fw_storage, manufacture_id, fm_entry->device_type.id, &new_ver);
 }
 
 /*************************************************************************/
 int
-vs_cloud_parse_firmware_manifest(void *payload, size_t payload_len, char *fw_url) {
+vs_cloud_parse_firmware_manifest(const vs_storage_op_ctx_t *fw_storage,
+                                 void *payload,
+                                 size_t payload_len,
+                                 char *fw_url) {
     jobj_t jobj;
     vs_firmware_manifest_entry_t fm_entry;
 
-    CHECK_NOT_ZERO(payload, VS_CLOUD_ERR_INVAL);
-    CHECK_NOT_ZERO(fw_url, VS_CLOUD_ERR_INVAL);
+    CHECK_NOT_ZERO_RET(payload, VS_CLOUD_ERR_INVAL);
+    CHECK_NOT_ZERO_RET(fw_url, VS_CLOUD_ERR_INVAL);
 
     VS_LOG_DEBUG("NEW FIRMWARE: %s", (char *)payload);
 
@@ -311,7 +314,7 @@ vs_cloud_parse_firmware_manifest(void *payload, size_t payload_len, char *fw_url
         VS_LOG_INFO("[FW] version = %s", fm_entry.version);
         VS_LOG_INFO("[FW] timestamp = %s", fm_entry.timestamp);
 
-        res = _is_new_fw_version_available_in_manifest(&fm_entry);
+        res = _is_new_fw_version_available_in_manifest(fw_storage, &fm_entry);
         if (VS_CLOUD_ERR_OK == res) {
             VS_IOT_STRCPY(fw_url, fm_entry.fw_file_url);
         }
@@ -325,8 +328,8 @@ int
 vs_cloud_parse_tl_mainfest(void *payload, size_t payload_len, char *tl_url) {
     jobj_t jobj;
 
-    CHECK_NOT_ZERO(payload, VS_CLOUD_ERR_INVAL);
-    CHECK_NOT_ZERO(tl_url, VS_CLOUD_ERR_INVAL);
+    CHECK_NOT_ZERO_RET(payload, VS_CLOUD_ERR_INVAL);
+    CHECK_NOT_ZERO_RET(tl_url, VS_CLOUD_ERR_INVAL);
 
     vs_tl_manifest_entry_t tl_entry;
 

@@ -46,7 +46,7 @@
 #include <virgil/iot/macros/macros.h>
 #include <virgil/iot/trust_list/trust_list.h>
 #include <virgil/iot/trust_list/tl_structs.h>
-#include <virgil/iot/update/update_interface.h>
+#include <virgil/iot/firmware/firmware_hal.h>
 #include <virgil/iot/hsm/asn1_cryptogram.h>
 #include <virgil/iot/hsm/hsm_virgil_ecies.h>
 #include <virgil/iot/hsm/hsm_interface.h>
@@ -55,6 +55,7 @@
 
 #include <virgil/iot/cloud/cloud.h>
 #include <virgil/iot/cloud/private/cloud_hal.h>
+#include <virgil/iot/storage_hal/storage_hal.h>
 #include <virgil/iot/cloud/private/cloud_parse_manifest.h>
 #include <virgil/iot/cloud/private/cloud_operations.h>
 #include <virgil/iot/cloud/base64/base64.h>
