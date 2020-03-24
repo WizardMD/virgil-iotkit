@@ -5,7 +5,7 @@ SCRIPT_PATH="$(cd `dirname $0` && pwd)"
 DEFAULT_SOURCE_PATH="${SCRIPT_PATH}/esp32-flsher-sources"
 SOURCE_PATH=""
 
-SKIP_ERASE="0"
+SKIP_ERASE=""
 
 DEFAULT_GIT_BRANCH="feature/pio_rework"
 GIT_BRANCH=""
@@ -18,6 +18,8 @@ CLEAN_SOURCES=""
 ESP_WIFI_SSID=""
 ESP_WIFI_PASS=""
 
+SKIP_ASK_ANY_KEY=""
+
 #**********************************************************************************
 print_help() {
   echo "$(basename $0) - virgil exp32 iotkit flasher."
@@ -28,7 +30,8 @@ print_help() {
   echo "    -c                     - clean source tree"    
   echo "    -w <WIFI SSID>         - WIFI ESSID"    
   echo "    -k <WIFI KEY>          - WIFI KEY"      
-  echo "    -e                     - skip erase flash"  
+  echo "    -e                     - skip erase flash"    
+  echo "    -x                     - Skip ask any key for flashing"  
   echo "    -h                     - print help"    
 
 }
@@ -58,6 +61,8 @@ while [ -n "$1" ]
         ;;        
     -e) SKIP_ERASE="1"
         ;;
+    -x) SKIP_ASK_ANY_KEY="1"
+        ;;        
     -h) print_help
         exit 0
         ;;        
@@ -195,6 +200,31 @@ pio_build(){
 
 
 #**********************************************************************************
+pio_erase(){
+  local LOCAL_RES=""
+  WORK_PROJECT="${PIO_PROJECT:-$DEFAULT_PIO_PROJECT}"
+  WORK_DIR="${SOURCE_PATH:-$DEFAULT_SOURCE_PATH}/virgil-iotkit/demo/esp32/${WORK_PROJECT}"
+  pushd ${WORK_DIR} > /dev/null 2>&1
+    pio run --target erase  2>&1
+    LOCAL_RES="${?}"
+  popd > /dev/null 2>&1
+  [ "$LOCAL_RES" != "0" ] && return 1  
+}
+
+#**********************************************************************************
+pio_flashing(){
+  local LOCAL_RES=""
+  WORK_PROJECT="${PIO_PROJECT:-$DEFAULT_PIO_PROJECT}"
+  WORK_DIR="${SOURCE_PATH:-$DEFAULT_SOURCE_PATH}/virgil-iotkit/demo/esp32/${WORK_PROJECT}"
+  pushd ${WORK_DIR} > /dev/null 2>&1
+    pio run --target upload 2>&1
+    LOCAL_RES="${?}"
+  popd > /dev/null 2>&1
+  [ "$LOCAL_RES" != "0" ] && return 1  
+}
+
+
+#**********************************************************************************
 # Check depends
 print_stage "Checking dependencies ... "
 RET_STR=$(check_depends)
@@ -264,4 +294,33 @@ else
   print_OK
 fi
 
+# Press any key
+if [ "${SKIP_ASK_ANY_KEY}" != "1" ]; then
+echo "For flashing recomended press the BOOT button"
+echo "then EN, release the BOOT button, release EN."
+read -n 1 -s -r -p "Press any key to continue"
+echo
+fi
+
+# Erasing flash
+if [ "${SKIP_ERASE}" != "1" ]; then
+  print_stage "Erasing esp32 flash ... "
+  RET_STR=$(pio_erase)
+  if [ "${?}" != "0" ]; then
+    print_ERROR "\n${RET_STR}"
+    exit 1
+  else  
+    print_OK
+  fi
+fi
+
+# Flashing firmware
+print_stage "Flashing firmware ... "
+RET_STR=$(pio_flashing)
+if [ "${?}" != "0" ]; then
+  print_ERROR "\n${RET_STR}"
+  exit 1
+else  
+  print_OK
+fi
 

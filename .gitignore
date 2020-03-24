@@ -50,3 +50,4 @@ demo-iotkit-qt.pro.user
 demo/esp32/include
 wifi_data.ini
 demo/esp32/exmaples/initializer/.vscode
+esp32-flsher-sources
