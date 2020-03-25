@@ -5,9 +5,9 @@ SCRIPT_PATH="$(cd `dirname $0` && pwd)"
 DEFAULT_SOURCE_PATH="${SCRIPT_PATH}/esp32-flsher-sources"
 SOURCE_PATH=""
 
-SKIP_ERASE=""
+ERASE_FLASH=""
 
-DEFAULT_GIT_BRANCH="feature/pio_rework"
+DEFAULT_GIT_BRANCH="feature/msgr-service"
 GIT_BRANCH=""
 
 DEFAULT_PIO_PROJECT="initializer"
@@ -20,6 +20,10 @@ ESP_WIFI_PASS=""
 
 SKIP_ASK_ANY_KEY=""
 
+ESP_ENVIROMENT=""
+
+DEBUG_OUT=""
+
 #**********************************************************************************
 print_help() {
   echo "$(basename $0) - virgil exp32 iotkit flasher."
@@ -30,8 +34,10 @@ print_help() {
   echo "    -c                     - clean source tree"    
   echo "    -w <WIFI SSID>         - WIFI ESSID"    
   echo "    -k <WIFI KEY>          - WIFI KEY"      
-  echo "    -e                     - skip erase flash"    
+  echo "    -e                     - build platformio enviroment"    
+  echo "    -t                     - erase flash"      
   echo "    -x                     - Skip ask any key for flashing"  
+  echo "    -d                     - Debug output"    
   echo "    -h                     - print help"    
 
 }
@@ -57,12 +63,17 @@ while [ -n "$1" ]
     -k) ESP_WIFI_PASS="$2"
         shift 
         ;;              
+    -e) ESP_ENVIROMENT="$2"
+        shift 
+        ;;                      
     -c) CLEAN_SOURCES="1"
         ;;        
-    -e) SKIP_ERASE="1"
+    -t) ERASE_FLASH="1"
         ;;
     -x) SKIP_ASK_ANY_KEY="1"
         ;;        
+    -d) DEBUG_OUT="1"
+        ;;                
     -h) print_help
         exit 0
         ;;        
@@ -177,52 +188,64 @@ EOF
 #**********************************************************************************
 pio_clean(){
   local LOCAL_RES=""
+  local WORK_ENV=""
   WORK_PROJECT="${PIO_PROJECT:-$DEFAULT_PIO_PROJECT}"
   WORK_DIR="${SOURCE_PATH:-$DEFAULT_SOURCE_PATH}/virgil-iotkit/demo/esp32/${WORK_PROJECT}"
+  [ "${ESP_ENVIROMENT}" != "" ] && WORK_ENV="-e $ESP_ENVIROMENT"
   pushd ${WORK_DIR} > /dev/null 2>&1
-    pio run --target clean 2>&1
+    pio  run ${WORK_ENV} --target clean 2>&1
     LOCAL_RES="${?}"  
   popd > /dev/null 2>&1
   [ "$LOCAL_RES" != "0" ] && return 1  
+  return 0
 }
 
 #**********************************************************************************
 pio_build(){
   local LOCAL_RES=""
+  local WORK_ENV=""
   WORK_PROJECT="${PIO_PROJECT:-$DEFAULT_PIO_PROJECT}"
   WORK_DIR="${SOURCE_PATH:-$DEFAULT_SOURCE_PATH}/virgil-iotkit/demo/esp32/${WORK_PROJECT}"
+  [ "${ESP_ENVIROMENT}" != "" ] && WORK_ENV="-e ${ESP_ENVIROMENT}"
   pushd ${WORK_DIR} > /dev/null 2>&1
-    pio run 2>&1
+    echo "pio run ${WORK_ENV}"
+    pio run ${WORK_ENV} 2>&1
     LOCAL_RES="${?}"
   popd > /dev/null 2>&1
   [ "$LOCAL_RES" != "0" ] && return 1  
+  return 0
 }
 
 
 #**********************************************************************************
 pio_erase(){
   local LOCAL_RES=""
+  local WORK_ENV=""  
   WORK_PROJECT="${PIO_PROJECT:-$DEFAULT_PIO_PROJECT}"
   WORK_DIR="${SOURCE_PATH:-$DEFAULT_SOURCE_PATH}/virgil-iotkit/demo/esp32/${WORK_PROJECT}"
+  [ "${ESP_ENVIROMENT}" != "" ] && WORK_ENV="-e $ESP_ENVIROMENT"  
   pushd ${WORK_DIR} > /dev/null 2>&1
-    pio run --target erase  2>&1
+    pio run ${WORK_ENV} --target erase  2>&1
     LOCAL_RES="${?}"
   popd > /dev/null 2>&1
   [ "$LOCAL_RES" != "0" ] && return 1  
+  return 0
 }
 
 #**********************************************************************************
 pio_flashing(){
   local LOCAL_RES=""
+  local WORK_ENV=""
   WORK_PROJECT="${PIO_PROJECT:-$DEFAULT_PIO_PROJECT}"
   WORK_DIR="${SOURCE_PATH:-$DEFAULT_SOURCE_PATH}/virgil-iotkit/demo/esp32/${WORK_PROJECT}"
+  [ "${ESP_ENVIROMENT}" != "" ] && WORK_ENV="-e $ESP_ENVIROMENT"    
   pushd ${WORK_DIR} > /dev/null 2>&1
-    pio run --target upload 2>&1
+    pio run ${WORK_ENV} --target upload 2>&1
     LOCAL_RES="${?}"
   popd > /dev/null 2>&1
   [ "$LOCAL_RES" != "0" ] && return 1  
+  return 0
 }
-
 
 #**********************************************************************************
 # Check depends
@@ -233,6 +256,7 @@ if [ "${?}" != "0" ]; then
   exit 1
 else  
   print_OK
+  [ "${DEBUG_OUT}" == "1" ] && echo "${RET_STR}"
 fi
 
 # Get sources
@@ -244,11 +268,13 @@ if [ "$SOURCE_PATH" == "" ]; then
     exit 1
   else  
     print_OK "$RET_STR"
+    [ "${DEBUG_OUT}" == "1" ] && echo "${RET_STR}"    
   fi
 else  
   print_stage "Get IOTKIT sources spipped. Custom directory Indicated [${SOURCE_PATH}] ... "
   if [ -d ${SOURCE_PATH} ]; then
     print_OK
+    [ "${DEBUG_OUT}" == "1" ] && echo "${RET_STR}"    
   else
     print_ERROR
     echo "Derectory not exist"
@@ -264,6 +290,7 @@ if [ "${GIT_BRANCH}" != "" ]; then
     exit 1
   else  
     print_OK "${RET_STR}"
+    [ "${DEBUG_OUT}" == "1" ] && echo "${RET_STR}"
   fi
 fi
 
@@ -276,13 +303,15 @@ if [ "${CLEAN_SOURCES}" != "" ]; then
     exit 1
   else  
     print_OK
+    [ "${DEBUG_OUT}" == "1" ] && echo "${RET_STR}"
   fi
 fi
 
 # Write configuration for wifi credentials
-print_stage "ESP_WIFI_PASS ... "
+print_stage "Prepare WiFi credentioals ... "
 RET_STR=$(pio_prep_wifi)
 print_OK
+[ "${DEBUG_OUT}" == "1" ] && echo "${RET_STR}"
 
 # Building firmware
 print_stage "Building firmware ... "
@@ -292,6 +321,7 @@ if [ "${?}" != "0" ]; then
   exit 1
 else  
   print_OK
+  [ "${DEBUG_OUT}" == "1" ] && echo "${RET_STR}"  
 fi
 
 # Press any key
@@ -303,7 +333,7 @@ echo
 fi
 
 # Erasing flash
-if [ "${SKIP_ERASE}" != "1" ]; then
+if [ "${ERASE_FLASH}" == "1" ]; then
   print_stage "Erasing esp32 flash ... "
   RET_STR=$(pio_erase)
   if [ "${?}" != "0" ]; then
@@ -311,6 +341,7 @@ if [ "${SKIP_ERASE}" != "1" ]; then
     exit 1
   else  
     print_OK
+    [ "${DEBUG_OUT}" == "1" ] && echo "${RET_STR}"
   fi
 fi
 
@@ -322,5 +353,6 @@ if [ "${?}" != "0" ]; then
   exit 1
 else  
   print_OK
+  [ "${DEBUG_OUT}" == "1" ] && echo "${RET_STR}"
 fi
 
